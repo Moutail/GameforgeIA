@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<!--
+  ╔══════════════════════════════════════════════════════════╗
+  ║  GAMEFORGE AI — index.html                               ║
+  ║  Point d'entrée de l'application                         ║
+  ║  Ce fichier : HTML/structure uniquement, aucune logique  ║
+  ║                                                          ║
+  ║  STRUCTURE DU PROJET :                                   ║
+  ║  ├── index.html          ← Tu es ici                     ║
+  ║  ├── config.js           ← 🔑 CLÉS API ICI               ║
+  ║  ├── core/                                               ║
+  ║  │   ├── keyRotation.js  ← Rotation des clés             ║
+  ║  │   ├── groqClient.js   ← Appels API Groq               ║
+  ║  │   ├── htmlProcessor.js← Nettoyage/validation HTML     ║
+  ║  │   └── pipeline.js     ← Orchestrateur principal       ║
+  ║  ├── prompts/                                            ║
+  ║  │   └── prompts.js      ← System prompts de l'agent     ║
+  ║  ├── styles/                                             ║
+  ║  │   └── main.css        ← Styles                        ║
+  ║  └── app.js              ← Contrôleur UI                 ║
+  ╚══════════════════════════════════════════════════════════╝
+-->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GameForge AI — Générateur de Jeux JavaScript</title>
+  <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+
+  <!-- ══ HEADER ══════════════════════════════════════════ -->
+  <header class="app-header">
+    <div class="logo">
+      <span class="logo-game">GAME</span><span class="logo-forge">FORGE</span>
+      <span> AI</span>
+      <span class="logo-version">v1.0</span>
+    </div>
+    <div class="status-bar">
+      <div class="status-dot" id="statusDot"></div>
+      <div class="status-text" id="statusText">PRÊT</div>
+    </div>
+  </header>
+
+  <!-- ══ PIPELINE BAR ════════════════════════════════════ -->
+  <div class="app-pipeline" id="pipelineBar">
+    <div class="pipe-step" id="ps-keys">🔑 CLÉS</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step" id="ps-gen">📝 GÉNÉRATION</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step" id="ps-validate">🔍 VALIDATION</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step" id="ps-sandbox">🧪 SANDBOX</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step" id="ps-fix">🔧 AUTO-FIX</div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-step" id="ps-done">✅ PRÊT</div>
+  </div>
+
+  <!-- ══ CORPS PRINCIPAL ═════════════════════════════════ -->
+  <div class="app-body">
+
+    <!-- ╔═ SIDEBAR ═════════════════════════════════════╗ -->
+    <aside class="sidebar">
+
+      <!-- 🔑 Clés API -->
+      <div class="section">
+        <div class="section-header" onclick="UI.toggleSection('keysBody','keysToggle')">
+          <span class="section-title">🔑 Clés API Groq</span>
+          <span class="section-toggle" id="keysToggle">▼</span>
+        </div>
+        <div class="section-body" id="keysBody">
+          <div class="keys-grid">
+            <div class="key-block">
+              <div class="key-label"><div class="key-dot" id="kd1"></div>K1 — Principale</div>
+              <input class="key-input" id="key1" type="password" placeholder="gsk_..." oninput="UI.validateKey(1)">
+            </div>
+            <div class="key-block">
+              <div class="key-label"><div class="key-dot" id="kd2"></div>K2 — Fallback</div>
+              <input class="key-input" id="key2" type="password" placeholder="gsk_..." oninput="UI.validateKey(2)">
+            </div>
+            <div class="key-block">
+              <div class="key-label"><div class="key-dot" id="kd3"></div>K3 — Fallback</div>
+              <input class="key-input" id="key3" type="password" placeholder="gsk_..." oninput="UI.validateKey(3)">
+            </div>
+            <div class="key-block">
+              <div class="key-label"><div class="key-dot" id="kd4"></div>K4 — Réserve</div>
+              <input class="key-input" id="key4" type="password" placeholder="gsk_..." oninput="UI.validateKey(4)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 📋 Prompt + Options -->
+      <div class="prompt-wrap">
+        <div class="section-title" style="margin-bottom:10px">📋 Description du jeu</div>
+
+        <!-- Genres (générés dynamiquement depuis config.js) -->
+        <div class="genre-grid" id="genreGrid"></div>
+
+        <textarea class="prompt" id="promptInput"
+          placeholder="Ex: Un jeu de plateforme inspiré de Rayman — personnage sans corps qui vole avec ses oreilles-hélice et propulse ses poings pour attaquer. 3 niveaux, boss final, ennemis variés."></textarea>
+
+        <div class="options-row">
+          <select class="select-input" id="complexitySelect">
+            <option value="simple">Simple (rapide)</option>
+            <option value="medium" selected>Medium (équilibré)</option>
+            <option value="complex">Complexe (complet)</option>
+          </select>
+          <select class="select-input" id="modelSelect">
+            <!-- Options générées dynamiquement depuis config.js -->
+          </select>
+        </div>
+
+        <button class="btn-generate" id="btnGenerate" onclick="App.generate()">
+          ▶ GÉNÉRER LE JEU
+        </button>
+      </div>
+
+      <!-- ⚡ Log Panel -->
+      <div class="log-panel">
+        <div class="log-header">
+          <span class="log-title">⚡ PIPELINE LOG</span>
+          <button class="btn-clear" onclick="UI.clearLog()">EFFACER</button>
+        </div>
+        <div class="log-body" id="logBody"></div>
+      </div>
+    </aside>
+    <!-- ╚══════════════════════════════════════════════╝ -->
+
+    <!-- ╔═ PREVIEW ══════════════════════════════════════╗ -->
+    <div class="preview">
+      <div class="preview-header">
+        <span class="preview-title" id="previewTitle">🎮 APERÇU DU JEU</span>
+        <div class="preview-actions">
+          <button class="btn-action" id="btnReload"     onclick="App.reload()"      disabled>↺ Recharger</button>
+          <button class="btn-action primary" id="btnDownload" onclick="App.download()"   disabled>⬇ Télécharger</button>
+          <button class="btn-action" id="btnFullscreen" onclick="App.fullscreen()"  disabled>⛶ Plein écran</button>
+        </div>
+      </div>
+      <div class="preview-body">
+        <iframe id="gameFrame" sandbox="allow-scripts allow-same-origin"></iframe>
+        <div class="overlay" id="overlay">
+          <div class="overlay-icon" id="overlayIcon">🕹️</div>
+          <div class="overlay-title" id="overlayTitle">GAMEFORGE AI</div>
+          <div class="overlay-sub"  id="overlaySub">
+            Ajoute tes clés Groq, décris ton jeu et clique sur GÉNÉRER
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ╚══════════════════════════════════════════════╝ -->
+
+  </div>
+
+  <!-- ══ SCRIPTS — ordre important ══════════════════════════ -->
+  <!-- 1. Config (clés, paramètres) -->
+  <script src="config.js"></script>
+
+  <!-- 2. Modules core -->
+  <script src="core/keyRotation.js"></script>
+  <script src="core/groqClient.js"></script>
+  <script src="core/htmlProcessor.js"></script>
+  <script src="prompts/prompts.js"></script>
+  <script src="core/pipeline.js"></script>
+
+  <!-- 3. Contrôleur UI (doit être en dernier) -->
+  <script src="app.js"></script>
+
+</body>
+</html>
