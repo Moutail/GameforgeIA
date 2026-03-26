@@ -12,10 +12,10 @@ const GAMEFORGE_CONFIG = {
   // │  Remplace les chaînes "INSERE_TA_CLE_ICI_X"         │
   // └─────────────────────────────────────────────────────┘
   GROQ_API_KEYS: [
-    "INSERE_TA_CLE_GROQ_ICI_1",   // ← Clé principale   (gsk_xxxx...)
-    "INSERE_TA_CLE_GROQ_ICI_2",   // ← Fallback 1       (gsk_xxxx...)
-    "INSERE_TA_CLE_GROQ_ICI_3",   // ← Fallback 2       (gsk_xxxx...)
-    "INSERE_TA_CLE_GROQ_ICI_4",   // ← Réserve          (gsk_xxxx...)
+    "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",   // ← Clé principale   (gsk_xxxx...)
+    "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",   // ← Fallback 1       (gsk_xxxx...)
+    "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",   // ← Fallback 2       (gsk_xxxx...)
+    "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",   // ← Réserve          (gsk_xxxx...)
   ],
 
   // ┌─────────────────────────────────────────────────────┐
@@ -37,14 +37,41 @@ const GAMEFORGE_CONFIG = {
   },
 
   // ┌─────────────────────────────────────────────────────┐
+  // │  🟣 CLÉ API ANTHROPIC (Claude)                      │
+  // │  Obtiens ta clé sur : console.anthropic.com         │
+  // │  Format : sk-ant-api03-xxxx...                      │
+  // │  Laisse vide si tu n'as pas de compte Anthropic     │
+  // └─────────────────────────────────────────────────────┘
+  ANTHROPIC_API_KEY: "",   // ← Mets ta clé Claude ici (sk-ant-...)
+
+  // ┌─────────────────────────────────────────────────────┐
+  // │  🤖 MODÈLES CLAUDE (Anthropic — payants)            │
+  // │  Qualité supérieure pour la génération de code      │
+  // └─────────────────────────────────────────────────────┘
+  ANTHROPIC_MODELS: {
+    // Génération principale — meilleur rapport qualité/coût
+    MAIN:     "claude-sonnet-4-6",
+
+    // Corrections et critique — rapide et économique
+    FAST_FIX: "claude-haiku-4-5-20251001",
+
+    // Critique qualité — rapide et économique
+    CRITIC:   "claude-haiku-4-5-20251001",
+
+    // Génération haute qualité — le plus puissant (optionnel)
+    OPUS:     "claude-opus-4-6",
+  },
+
+  // ┌─────────────────────────────────────────────────────┐
   // │  ⚙️  PARAMÈTRES DU PIPELINE                         │
   // └─────────────────────────────────────────────────────┘
   PIPELINE: {
     MAX_FIX_ATTEMPTS:   3,     // Nb max de tentatives de correction auto
     SANDBOX_TIMEOUT_MS: 7000,  // Temps d'attente avant de conclure "jeu OK"
     RETRY_DELAY_MS:     600,   // Pause entre 2 tentatives (rate limit)
-    MAX_TOKENS:         8000,  // Tokens max par réponse Groq
+    MAX_TOKENS:         12000, // Tokens max par réponse Groq (augmenté pour jeux plus complets)
     TEMPERATURE:        0.7,   // Créativité : 0 = strict, 1 = créatif
+    QUALITY_THRESHOLD:  7,     // Score minimum /10 pour valider un jeu (étape CRITIC)
   },
 
   // ┌─────────────────────────────────────────────────────┐

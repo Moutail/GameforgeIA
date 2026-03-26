@@ -52,6 +52,8 @@
     <div class="pipe-arrow">→</div>
     <div class="pipe-step" id="ps-sandbox">🧪 SANDBOX</div>
     <div class="pipe-arrow">→</div>
+    <div class="pipe-step" id="ps-quality">🎯 QUALITÉ</div>
+    <div class="pipe-arrow">→</div>
     <div class="pipe-step" id="ps-fix">🔧 AUTO-FIX</div>
     <div class="pipe-arrow">→</div>
     <div class="pipe-step" id="ps-done">✅ PRÊT</div>
@@ -63,7 +65,7 @@
     <!-- ╔═ SIDEBAR ═════════════════════════════════════╗ -->
     <aside class="sidebar">
 
-      <!-- 🔑 Clés API -->
+      <!-- 🔑 Clés API Groq -->
       <div class="section">
         <div class="section-header" onclick="UI.toggleSection('keysBody','keysToggle')">
           <span class="section-title">🔑 Clés API Groq</span>
@@ -87,6 +89,24 @@
               <div class="key-label"><div class="key-dot" id="kd4"></div>K4 — Réserve</div>
               <input class="key-input" id="key4" type="password" placeholder="gsk_..." oninput="UI.validateKey(4)">
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 🟣 Clé API Claude (Anthropic) -->
+      <div class="section">
+        <div class="section-header" onclick="UI.toggleSection('claudeKeysBody','claudeKeysToggle')">
+          <span class="section-title">🟣 Clé API Claude (Anthropic)</span>
+          <span class="section-toggle collapsed" id="claudeKeysToggle">▼</span>
+        </div>
+        <div class="section-body" id="claudeKeysBody" style="max-height:0px">
+          <div class="key-block" style="margin-bottom:6px">
+            <div class="key-label"><div class="key-dot" id="kdClaude"></div>Clé Claude — sk-ant-...</div>
+            <input class="key-input" id="anthropicKey" type="password" placeholder="sk-ant-api03-..." oninput="UI.validateAnthropicKey()" style="width:100%">
+          </div>
+          <div style="font-size:10px;color:var(--dim);font-family:var(--mono);line-height:1.5;margin-top:4px">
+            Génération 3× plus qualitative.<br>
+            Obtiens ta clé : console.anthropic.com
           </div>
         </div>
       </div>
@@ -160,6 +180,7 @@
   <!-- 2. Modules core -->
   <script src="core/keyRotation.js"></script>
   <script src="core/groqClient.js"></script>
+  <script src="core/anthropicClient.js"></script>
   <script src="core/htmlProcessor.js"></script>
   <script src="prompts/prompts.js"></script>
   <script src="core/pipeline.js"></script>

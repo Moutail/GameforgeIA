@@ -43,7 +43,7 @@ const UI = {
   },
 
   resetPipeline() {
-    ["keys","gen","validate","sandbox","fix","done"].forEach(s => this.setStep(s, "idle"));
+    ["keys","gen","validate","sandbox","quality","fix","done"].forEach(s => this.setStep(s, "idle"));
   },
 
   // ── Status bar ────────────────────────────────────────
@@ -87,7 +87,7 @@ const UI = {
     btn.textContent = generating ? "⟳ GÉNÉRATION..." : "▶ GÉNÉRER LE JEU";
   },
 
-  // ── Clés ──────────────────────────────────────────────
+  // ── Clés Groq ─────────────────────────────────────────
   validateKey(n) {
     const val = document.getElementById(`key${n}`).value.trim();
     const dot = document.getElementById(`kd${n}`);
@@ -99,6 +99,22 @@ const UI = {
     return [1,2,3,4]
       .map(n => document.getElementById(`key${n}`).value.trim())
       .filter(k => k.startsWith("gsk_") && !k.includes("INSERE"));
+  },
+
+  // ── Clé Anthropic ─────────────────────────────────────
+  validateAnthropicKey() {
+    const val = document.getElementById("anthropicKey")?.value.trim() || "";
+    const dot = document.getElementById("kdClaude");
+    const ok  = val.startsWith("sk-ant-") && val.length > 20;
+    if (dot) dot.className = "key-dot" + (ok ? " ok" : "");
+  },
+
+  getAnthropicKey() {
+    const inputKey  = document.getElementById("anthropicKey")?.value.trim() || "";
+    const configKey = GAMEFORGE_CONFIG.ANTHROPIC_API_KEY || "";
+    return (inputKey.startsWith("sk-ant-") ? inputKey : null)
+        || (configKey.startsWith("sk-ant-") ? configKey : null)
+        || null;
   },
 
   // ── Sections ──────────────────────────────────────────
@@ -126,16 +142,37 @@ const App = {
   async generate() {
     if (AppState.isGenerating) return;
 
-    // Récupère les clés depuis les inputs ET depuis config.js
-    const inputKeys  = UI.getKeysFromInputs();
-    const configKeys = GAMEFORGE_CONFIG.GROQ_API_KEYS.filter(
-      k => k && k.startsWith("gsk_") && !k.includes("INSERE")
-    );
-    const allKeys = [...new Set([...inputKeys, ...configKeys])];
+    const model      = document.getElementById("modelSelect").value;
+    const isAnthropic = model.startsWith("claude-");
 
-    if (allKeys.length === 0) {
-      UI.log("❌ Aucune clé Groq valide. Ajoute tes clés dans config.js ou dans les inputs.", "error");
-      return;
+    // ── Validation des clés selon le provider ─────────
+    let gameClient;
+
+    if (isAnthropic) {
+      const anthropicKey = UI.getAnthropicKey();
+      if (!anthropicKey) {
+        UI.log("❌ Clé Claude manquante. Ouvre la section 🟣 et entre ta clé sk-ant-...", "error");
+        UI.toggleSection("claudeKeysBody", "claudeKeysToggle");
+        return;
+      }
+      gameClient = new AnthropicClient(anthropicKey);
+      UI.log(`🟣 Mode Claude activé — ${model}`, "key");
+
+    } else {
+      // Mode Groq
+      const inputKeys  = UI.getKeysFromInputs();
+      const configKeys = GAMEFORGE_CONFIG.GROQ_API_KEYS.filter(
+        k => k && k.startsWith("gsk_") && !k.includes("INSERE")
+      );
+      const allKeys = [...new Set([...inputKeys, ...configKeys])];
+
+      if (allKeys.length === 0) {
+        UI.log("❌ Aucune clé Groq valide. Ajoute tes clés dans config.js ou dans les inputs.", "error");
+        return;
+      }
+
+      const rotationManager = new KeyRotationManager(allKeys);
+      gameClient = new GroqClient(rotationManager);
     }
 
     const description = document.getElementById("promptInput").value.trim();
@@ -144,21 +181,25 @@ const App = {
       return;
     }
 
-    const model      = document.getElementById("modelSelect").value;
     const complexity = document.getElementById("complexitySelect").value;
     const genre      = AppState.selectedGenre || GAMEFORGE_CONFIG.GENRES[0].id;
 
-    // Reset
+    // Modèles de fix et critique selon le provider
+    const fixModels  = isAnthropic
+      ? [GAMEFORGE_CONFIG.ANTHROPIC_MODELS.FAST_FIX, GAMEFORGE_CONFIG.ANTHROPIC_MODELS.FAST_FIX]
+      : [GAMEFORGE_CONFIG.MODELS.FAST_FIX, GAMEFORGE_CONFIG.MODELS.LONG_CTX];
+
+    const criticModel = isAnthropic
+      ? GAMEFORGE_CONFIG.ANTHROPIC_MODELS.CRITIC
+      : GAMEFORGE_CONFIG.MODELS.CRITIC;
+
+    // Reset UI
     AppState.isGenerating = true;
     AppState.currentHTML  = null;
     UI.setGenerateBtn(true);
     UI.setActionsEnabled(false);
     UI.resetPipeline();
     UI.showOverlay("GÉNÉRATION EN COURS", "Initialisation...", "⟳", true);
-
-    // Crée les instances
-    const rotationManager = new KeyRotationManager(allKeys);
-    const groqClient      = new GroqClient(rotationManager);
 
     // Interface UI pour le pipeline
     const uiBridge = {
@@ -169,10 +210,10 @@ const App = {
       injectGame: (html)      => UI.injectGame(html),
     };
 
-    const pipeline = new GameForgePipeline(groqClient, uiBridge);
+    const pipeline = new GameForgePipeline(gameClient, uiBridge);
 
     // Lance le pipeline
-    const result = await pipeline.run({ description, genre, complexity, model });
+    const result = await pipeline.run({ description, genre, complexity, model, fixModels, criticModel });
 
     // Résultat
     AppState.isGenerating = false;
@@ -244,14 +285,47 @@ function init() {
     if (i === 0) AppState.selectedGenre = g.id;
   });
 
-  // Modèles depuis config.js
+  // Modèles dans le dropdown — groupés par provider
   const modelSelect = document.getElementById("modelSelect");
+
+  // Groupe Groq (gratuit)
+  const groqGroup = document.createElement("optgroup");
+  groqGroup.label = "── GROQ (gratuit) ──";
+  const groqLabels = { MAIN: "llama-3.3-70b ★", FAST_FIX: "llama-3.1-8b (rapide)", LONG_CTX: "mixtral-8x7b (contexte)", CRITIC: "gemma2-9b (critique)" };
   Object.entries(GAMEFORGE_CONFIG.MODELS).forEach(([key, val]) => {
     const opt = document.createElement("option");
     opt.value       = val;
-    opt.textContent = val.split("-").slice(0, 3).join("-");
+    opt.textContent = groqLabels[key] || val.split("-").slice(0,3).join("-");
     if (key === "MAIN") opt.selected = true;
-    modelSelect.appendChild(opt);
+    groqGroup.appendChild(opt);
+  });
+  modelSelect.appendChild(groqGroup);
+
+  // Groupe Claude (payant)
+  const claudeGroup = document.createElement("optgroup");
+  claudeGroup.label = "── CLAUDE (payant) ──";
+  const claudeOptions = [
+    { val: GAMEFORGE_CONFIG.ANTHROPIC_MODELS.MAIN,     label: "claude-sonnet ★ (recommandé)" },
+    { val: GAMEFORGE_CONFIG.ANTHROPIC_MODELS.FAST_FIX, label: "claude-haiku (rapide/économique)" },
+    { val: GAMEFORGE_CONFIG.ANTHROPIC_MODELS.OPUS,     label: "claude-opus (max qualité)" },
+  ];
+  claudeOptions.forEach(({ val, label }) => {
+    const opt = document.createElement("option");
+    opt.value       = val;
+    opt.textContent = label;
+    claudeGroup.appendChild(opt);
+  });
+  modelSelect.appendChild(claudeGroup);
+
+  // Afficher/masquer la section Claude selon le modèle sélectionné
+  modelSelect.addEventListener("change", () => {
+    const isClaude = modelSelect.value.startsWith("claude-");
+    const claudeSection = document.getElementById("claudeKeysBody");
+    const claudeToggle  = document.getElementById("claudeKeysToggle");
+    if (isClaude && claudeSection.style.maxHeight === "0px") {
+      claudeSection.style.maxHeight = "500px";
+      claudeToggle.classList.remove("collapsed");
+    }
   });
 
   // Raccourci clavier
@@ -265,14 +339,21 @@ function init() {
   UI.log(`${GAMEFORGE_CONFIG.APP_NAME} v${GAMEFORGE_CONFIG.VERSION} initialisé`, "success");
   UI.log("Ctrl+Entrée pour générer rapidement", "info");
 
-  // Avertissement si aucune clé en config
-  const configKeys = GAMEFORGE_CONFIG.GROQ_API_KEYS.filter(
-    k => k && !k.includes("INSERE")
-  );
-  if (configKeys.length === 0) {
-    UI.log("⚠️ Aucune clé dans config.js — utilise les inputs ou édite config.js", "warn");
-  } else {
-    UI.log(`🔑 ${configKeys.length} clé(s) chargée(s) depuis config.js`, "key");
+  // Statut des clés au démarrage
+  const configGroqKeys = GAMEFORGE_CONFIG.GROQ_API_KEYS.filter(k => k && !k.includes("INSERE"));
+  const configClaudeKey = GAMEFORGE_CONFIG.ANTHROPIC_API_KEY;
+
+  if (configGroqKeys.length > 0) {
+    UI.log(`🔑 ${configGroqKeys.length} clé(s) Groq chargée(s) depuis config.js`, "key");
+  }
+  if (configClaudeKey && configClaudeKey.startsWith("sk-ant-")) {
+    UI.log("🟣 Clé Claude chargée depuis config.js", "key");
+    // Valider le dot
+    const dot = document.getElementById("kdClaude");
+    if (dot) dot.className = "key-dot ok";
+  }
+  if (configGroqKeys.length === 0 && !configClaudeKey) {
+    UI.log("⚠️ Aucune clé trouvée. Ajoute une clé Groq ou Claude.", "warn");
   }
 }
 

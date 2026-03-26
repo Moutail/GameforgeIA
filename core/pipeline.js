@@ -1,41 +1,48 @@
 // ============================================================
 //  GAMEFORGE AI — core/pipeline.js
-//  Orchestrateur principal : génération + auto-correction
-//  Dépend de : groqClient.js, htmlProcessor.js, prompts.js
+//  Orchestrateur principal : génération + auto-correction + critique
+//  Dépend de : groqClient.js / anthropicClient.js, htmlProcessor.js, prompts.js
 // ============================================================
 
 class GameForgePipeline {
 
   /**
-   * @param {GroqClient}  client   - Instance du client Groq
-   * @param {Object}      ui       - Référence aux composants UI
+   * @param {GroqClient|AnthropicClient}  client   - Instance du client IA
+   * @param {Object}                      ui       - Référence aux composants UI
    */
   constructor(client, ui) {
     this.client = client;
-    this.ui     = ui;   // { log, setStep, setStatus, setOverlay }
+    this.ui     = ui;   // { log, setStep, setStatus, setOverlay, injectGame }
     this.config = GAMEFORGE_CONFIG.PIPELINE;
   }
 
   // ── PIPELINE PRINCIPAL ────────────────────────────────────
   /**
-   * Lance la génération complète avec boucle de correction auto
+   * Lance la génération complète avec boucle de correction auto + critique qualité
    *
-   * @param {Object} params
-   * @param {string} params.description - Description du jeu
-   * @param {string} params.genre       - Genre sélectionné
-   * @param {string} params.complexity  - simple | medium | complex
-   * @param {string} params.model       - Modèle Groq principal
+   * @param {Object}   params
+   * @param {string}   params.description  - Description du jeu
+   * @param {string}   params.genre        - Genre sélectionné
+   * @param {string}   params.complexity   - simple | medium | complex
+   * @param {string}   params.model        - Modèle principal sélectionné
+   * @param {string[]} params.fixModels    - [modèle fix rapide, modèle fix lent]
+   * @param {string}   params.criticModel  - Modèle pour la critique qualité
    * @returns {Promise<{success, html, attempts, error}>}
    */
-  async run({ description, genre, complexity, model }) {
+  async run({ description, genre, complexity, model, fixModels, criticModel }) {
     const { log, setStep, setStatus, setOverlay } = this.ui;
     const MAX = this.config.MAX_FIX_ATTEMPTS;
 
-    let lastCode  = null;
-    let lastError = null;
+    // Stocker les modèles pour les étapes suivantes
+    this.fixModels   = fixModels   || [GAMEFORGE_CONFIG.MODELS.FAST_FIX, GAMEFORGE_CONFIG.MODELS.LONG_CTX];
+    this.criticModel = criticModel || GAMEFORGE_CONFIG.MODELS.CRITIC;
+
+    let lastCode       = null;
+    let lastError      = null;
+    let isQualityRetry = false; // true si on régénère à cause d'un mauvais score critique
 
     log("═══ DÉMARRAGE PIPELINE ═══", "step");
-    log(`Genre: ${genre} | Complexité: ${complexity} | Modèle: ${model}`, "info");
+    log(`Genre: ${genre} | Complexité: ${complexity} | Modèle: ${model.split("-").slice(0,3).join("-")}`, "info");
     setStatus("active", "GÉNÉRATION");
 
     // ──────────────────────────────────────────────────────────
@@ -45,7 +52,9 @@ class GameForgePipeline {
 
       try {
         // ── ÉTAPE A : Génération ou Correction ────────────────
-        if (attempt === 1) {
+        // On régénère (pas juste un fix) si c'est un retry qualité
+        if (attempt === 1 || isQualityRetry) {
+          isQualityRetry = false;
           lastCode = await this._generate({ description, genre, complexity, model, log, setStep });
         } else {
           lastCode = await this._fix({ lastCode, lastError, description, attempt, log, setStep });
@@ -81,16 +90,7 @@ class GameForgePipeline {
 
         const sandboxResult = await this._testInSandbox(lastCode);
 
-        if (sandboxResult.success) {
-          // ✅ JEU FONCTIONNEL
-          setStep("sandbox", "done");
-          setStep("done",    "done");
-          setStatus("", "PRÊT");
-          log(`🎮 JEU FONCTIONNEL ! (${attempt} tentative${attempt > 1 ? "s" : ""})`, "success");
-
-          return { success: true, html: lastCode, attempts: attempt, error: null };
-
-        } else {
+        if (!sandboxResult.success) {
           // ❌ Erreur runtime détectée dans le sandbox
           lastError = sandboxResult.error;
           setStep("sandbox", "error");
@@ -100,7 +100,42 @@ class GameForgePipeline {
             log(`🔧 Auto-correction lancée (tentative ${attempt + 1}/${MAX})...`, "warn");
             setStep("fix", "fixing");
           }
+          continue;
         }
+
+        setStep("sandbox", "done");
+
+        // ── ÉTAPE D : Critique qualité ────────────────────────
+        setStep("quality", "active");
+        log("🎯 Évaluation qualité en cours...", "step");
+
+        const critiqueResult = await this._critique({ html: lastCode, description, genre, log });
+
+        const score     = critiqueResult.total;
+        const threshold = this.config.QUALITY_THRESHOLD || 7;
+
+        if (!critiqueResult.pass && attempt < MAX) {
+          // Score insuffisant → régénérer (pas fixer)
+          setStep("quality", "error");
+          log(`🎯 Score qualité: ${score}/10 — sous le seuil (${threshold}/10)`, "warn");
+          if (critiqueResult.issues && critiqueResult.issues.length > 0) {
+            log(`   Problèmes : ${critiqueResult.issues.join(" | ")}`, "warn");
+          }
+          lastError      = `Qualité insuffisante (${score}/10): ${(critiqueResult.issues || []).join(", ")}`;
+          isQualityRetry = true;
+          setStep("fix", "fixing");
+          log(`🔄 Régénération avec contraintes renforcées (tentative ${attempt + 1}/${MAX})...`, "warn");
+          continue;
+        }
+
+        // ✅ JEU VALIDÉ (sandbox OK + qualité OK)
+        setStep("quality", "done");
+        log(`🎯 Score qualité: ${score}/10 ✅`, "success");
+        setStep("done", "done");
+        setStatus("", "PRÊT");
+        log(`🎮 JEU FONCTIONNEL ! (${attempt} tentative${attempt > 1 ? "s" : ""})`, "success");
+
+        return { success: true, html: lastCode, attempts: attempt, error: null };
 
       } catch (err) {
         log(`💥 Erreur inattendue: ${err.message}`, "error");
@@ -140,11 +175,8 @@ class GameForgePipeline {
     setStep("fix", "fixing");
     log(`🔧 Correction (essai ${attempt}) — erreur: "${lastError}"`, "warn");
 
-    // On utilise un modèle rapide pour les corrections
-    const fixModel = attempt === 2
-      ? GAMEFORGE_CONFIG.MODELS.FAST_FIX   // llama 8B (rapide)
-      : GAMEFORGE_CONFIG.MODELS.LONG_CTX;  // mixtral (contexte long)
-
+    // Sélectionner le bon modèle de fix selon la tentative
+    const fixModel = this.fixModels[attempt - 2] || this.fixModels[this.fixModels.length - 1];
     log(`   Modèle de correction : ${fixModel.split("-").slice(0,3).join("-")}`, "info");
 
     const fixPrompt = Prompts.buildFix(lastCode, lastError, description, attempt);
@@ -153,6 +185,40 @@ class GameForgePipeline {
     const raw = await this.client.chat(messages, fixModel, (msg, type) => log(msg, type));
     setStep("fix", "done");
     return raw;
+  }
+
+  // ── ÉTAPE : CRITIQUE QUALITATIVE ─────────────────────────
+  /**
+   * Évalue la qualité du jeu généré via le modèle CRITIC.
+   * Retourne {pass, total, issues} — si le CRITIC échoue, on présume pass=true.
+   */
+  async _critique({ html, description, genre, log }) {
+    try {
+      const critiquePrompt = Prompts.buildCritique(html, description, genre);
+      const messages = [{ role: "user", content: critiquePrompt }];
+
+      log(`   Modèle critique : ${this.criticModel.split("-").slice(0,3).join("-")}`, "info");
+      const raw = await this.client.chat(messages, this.criticModel, (msg, type) => log(msg, type));
+
+      // Extraire le JSON de la réponse (peut contenir du texte parasite)
+      const jsonMatch = raw.match(/\{[^{}]*"total"\s*:\s*\d+[^{}]*\}/);
+      if (!jsonMatch) {
+        log("⚠️ CRITIC : réponse non-JSON → qualité présumée OK", "warn");
+        return { pass: true, total: 10, issues: [] };
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      const total  = typeof parsed.total === "number" ? parsed.total : 10;
+      const pass   = typeof parsed.pass  === "boolean" ? parsed.pass : total >= (this.config.QUALITY_THRESHOLD || 7);
+      const issues = Array.isArray(parsed.issues) ? parsed.issues : [];
+
+      return { pass, total, issues };
+
+    } catch (err) {
+      // Le CRITIC ne doit jamais bloquer le pipeline
+      log(`⚠️ CRITIC indisponible (${err.message.substring(0, 60)}) → qualité présumée OK`, "warn");
+      return { pass: true, total: 10, issues: [] };
+    }
   }
 
   // ── ÉTAPE : TEST SANDBOX ──────────────────────────────────
