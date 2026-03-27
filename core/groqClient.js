@@ -15,7 +15,7 @@ class GroqClient {
     this.pipeline = GAMEFORGE_CONFIG.PIPELINE;
   }
 
-  // ── Appel principal avec retry automatique ────────────────
+  // ── Appel principal avec retry + backoff exponentiel ──────
   /**
    * @param {Object[]} messages  - Format OpenAI [{role, content}]
    * @param {string}   model     - Identifiant modèle Groq
@@ -23,7 +23,9 @@ class GroqClient {
    * @returns {Promise<string>}  - Texte de la réponse
    */
   async chat(messages, model, onStatus = null) {
-    const maxAttempts = this.pipeline.MAX_FIX_ATTEMPTS * this.rotation.keys.length;
+    const maxAttempts = Math.max(6, this.pipeline.MAX_FIX_ATTEMPTS * this.rotation.keys.length);
+    const baseDelay   = this.pipeline.RETRY_DELAY_MS  || 800;
+    const maxDelay    = this.pipeline.MAX_RETRY_DELAY_MS || 8000;
     let attempt = 0;
 
     while (attempt < maxAttempts) {
@@ -34,9 +36,9 @@ class GroqClient {
       try {
         currentKey = this.rotation.getNext();
       } catch (e) {
-        // Toutes les clés bloquées — attendre
-        if (onStatus) onStatus(`⏳ Toutes les clés rate-limitées, attente...`, "warn");
-        await sleep(this.pipeline.RETRY_DELAY_MS * 3);
+        const waitMs = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+        if (onStatus) onStatus(`⏳ Toutes les clés rate-limitées — attente ${(waitMs/1000).toFixed(1)}s...`, "warn");
+        await sleep(waitMs);
         continue;
       }
 
@@ -61,9 +63,13 @@ class GroqClient {
 
         // ── Gestion des codes HTTP ──────────────────────────
         if (response.status === 429) {
-          this.rotation.blockKey(currentKey.index, 60000);
-          if (onStatus) onStatus(`⚠️ Rate limit K${currentKey.num} — rotation`, "warn");
-          await sleep(this.pipeline.RETRY_DELAY_MS);
+          // Lit le Retry-After si présent
+          const retryAfter = parseInt(response.headers.get("retry-after") || "60", 10);
+          const blockMs    = retryAfter * 1000;
+          this.rotation.blockKey(currentKey.index, blockMs);
+          const waitMs = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
+          if (onStatus) onStatus(`⚠️ Rate limit K${currentKey.num} (retry-after: ${retryAfter}s) — rotation +${(waitMs/1000).toFixed(1)}s`, "warn");
+          await sleep(waitMs);
           continue;
         }
 
@@ -71,9 +77,16 @@ class GroqClient {
           throw new Error(`Clé K${currentKey.num} invalide ou expirée (401)`);
         }
 
-        if (response.status === 503) {
-          if (onStatus) onStatus(`⚠️ Groq surchargé (503) — retry...`, "warn");
-          await sleep(2000);
+        if (response.status === 400) {
+          const errBody = await response.json().catch(() => ({}));
+          const msg = errBody.error?.message || "Requête invalide (400)";
+          throw new Error(msg); // Permanent : modèle décommissionné, paramètre invalide, etc.
+        }
+
+        if (response.status === 503 || response.status === 502) {
+          const waitMs = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+          if (onStatus) onStatus(`⚠️ Groq surchargé (${response.status}) — retry dans ${(waitMs/1000).toFixed(1)}s...`, "warn");
+          await sleep(waitMs);
           continue;
         }
 
@@ -89,16 +102,26 @@ class GroqClient {
         if (!text) throw new Error("Réponse Groq vide");
 
         if (onStatus) {
-          onStatus(`✅ K${currentKey.num} OK — ${usage?.completion_tokens ?? "?"} tokens`, "success");
+          const toks = usage?.completion_tokens ?? "?";
+          const total = usage?.total_tokens ?? "?";
+          onStatus(`✅ K${currentKey.num} OK — ${toks} tokens générés (${total} total)`, "success");
         }
 
         return text;
 
       } catch (err) {
-        // Erreur réseau ou clé invalide
-        if (err.message.includes("invalide")) throw err;
+        // Erreurs permanentes → throw immédiat, pas de retry
+        const isPermanent =
+          err.message.includes("invalide") ||
+          err.message.includes("decommissioned") ||
+          err.message.includes("no longer supported") ||
+          err.message.includes("does not exist") ||
+          err.message.includes("401");
+        if (isPermanent) throw err;
+
+        const waitMs = Math.min(baseDelay * Math.pow(2, attempt - 1), maxDelay);
         if (onStatus) onStatus(`❌ K${currentKey.num}: ${err.message}`, "error");
-        await sleep(this.pipeline.RETRY_DELAY_MS);
+        await sleep(waitMs);
       }
     }
 

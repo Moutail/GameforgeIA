@@ -29,11 +29,11 @@ const GAMEFORGE_CONFIG = {
     // Corrections rapides — ultra rapide, moins de tokens
     FAST_FIX: "llama-3.1-8b-instant",
 
-    // Jeux complexes — contexte de 32 000 tokens
-    LONG_CTX: "mixtral-8x7b-32768",
+    // Jeux complexes — grand contexte
+    LONG_CTX: "llama-3.1-70b-versatile",
 
     // Validation/critique du code généré
-    CRITIC:   "gemma2-9b-it",
+    CRITIC:   "llama-3.1-8b-instant",
   },
 
   // ┌─────────────────────────────────────────────────────┐
@@ -66,12 +66,14 @@ const GAMEFORGE_CONFIG = {
   // │  ⚙️  PARAMÈTRES DU PIPELINE                         │
   // └─────────────────────────────────────────────────────┘
   PIPELINE: {
-    MAX_FIX_ATTEMPTS:   3,     // Nb max de tentatives de correction auto
-    SANDBOX_TIMEOUT_MS: 7000,  // Temps d'attente avant de conclure "jeu OK"
-    RETRY_DELAY_MS:     600,   // Pause entre 2 tentatives (rate limit)
-    MAX_TOKENS:         12000, // Tokens max par réponse Groq (augmenté pour jeux plus complets)
-    TEMPERATURE:        0.7,   // Créativité : 0 = strict, 1 = créatif
-    QUALITY_THRESHOLD:  7,     // Score minimum /10 pour valider un jeu (étape CRITIC)
+    MAX_FIX_ATTEMPTS:   5,      // Nb max de tentatives (correction + régénération qualité)
+    SANDBOX_TIMEOUT_MS: 10000,  // Temps d'attente avant de conclure "jeu OK" (10s)
+    RETRY_DELAY_MS:     800,    // Pause de base entre 2 tentatives (rate limit)
+    MAX_RETRY_DELAY_MS: 8000,   // Pause max (backoff exponentiel)
+    MAX_TOKENS:         16000,  // Tokens max par réponse (jeux plus complets)
+    TEMPERATURE:        0.7,    // Créativité : 0 = strict, 1 = créatif
+    QUALITY_THRESHOLD:  10,     // Score minimum /14 pour valider un jeu (étape CRITIC — 6 dimensions)
+    FORCE_REGEN_ON_LOW: true,   // Régénérer complètement si score < seuil (vs juste corriger)
   },
 
   // ┌─────────────────────────────────────────────────────┐
@@ -96,6 +98,6 @@ const GAMEFORGE_CONFIG = {
   // ┌─────────────────────────────────────────────────────┐
   // │  📦 VERSION                                          │
   // └─────────────────────────────────────────────────────┘
-  VERSION: "1.0.0",
+  VERSION: "2.0.0",
   APP_NAME: "GameForge AI",
 };

@@ -23,7 +23,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>GameForge AI — Générateur de Jeux JavaScript</title>
   <link rel="stylesheet" href="styles/main.css">
 </head>
@@ -34,7 +34,7 @@
     <div class="logo">
       <span class="logo-game">GAME</span><span class="logo-forge">FORGE</span>
       <span> AI</span>
-      <span class="logo-version">v1.0</span>
+      <span class="logo-version">v2.0</span>
     </div>
     <div class="status-bar">
       <div class="status-dot" id="statusDot"></div>
@@ -66,7 +66,7 @@
     <aside class="sidebar">
 
       <!-- 🔑 Clés API Groq -->
-      <div class="section">
+      <div class="section" id="keysSection">
         <div class="section-header" onclick="UI.toggleSection('keysBody','keysToggle')">
           <span class="section-title">🔑 Clés API Groq</span>
           <span class="section-toggle" id="keysToggle">▼</span>
@@ -94,7 +94,7 @@
       </div>
 
       <!-- 🟣 Clé API Claude (Anthropic) -->
-      <div class="section">
+      <div class="section" id="claudeSection">
         <div class="section-header" onclick="UI.toggleSection('claudeKeysBody','claudeKeysToggle')">
           <span class="section-title">🟣 Clé API Claude (Anthropic)</span>
           <span class="section-toggle collapsed" id="claudeKeysToggle">▼</span>
@@ -111,8 +111,33 @@
         </div>
       </div>
 
+      <!-- 🖼️ Assets utilisateur -->
+      <div class="section" id="assetsSection">
+        <div class="section-header" onclick="UI.toggleSection('assetsBody','assetsToggle')">
+          <span class="section-title">🖼️ Assets (Sprites / Fonds)</span>
+          <span class="section-toggle collapsed" id="assetsToggle">▼</span>
+        </div>
+        <div class="section-body" id="assetsBody" style="max-height:0px">
+          <div
+            class="asset-drop-zone"
+            id="assetDropZone"
+            onclick="document.getElementById('assetFileInput').click()"
+            ondragover="AssetPanel.onDragOver(event)"
+            ondragleave="AssetPanel.onDragLeave(event)"
+            ondrop="AssetPanel.onDrop(event)">
+            <span class="drop-icon">🖼️</span>
+            Glisse tes sprites ici<br>
+            <span style="font-size:9px;opacity:0.6">PNG · SVG · WebP · GIF</span>
+          </div>
+          <input type="file" id="assetFileInput" accept="image/*" multiple style="display:none"
+            onchange="AssetPanel.onFileSelect(event)">
+          <div id="assetCount" class="asset-count" style="display:none"></div>
+          <div class="asset-grid" id="assetGrid"></div>
+        </div>
+      </div>
+
       <!-- 📋 Prompt + Options -->
-      <div class="prompt-wrap">
+      <div class="prompt-wrap" id="promptSection">
         <div class="section-title" style="margin-bottom:10px">📋 Description du jeu</div>
 
         <!-- Genres (générés dynamiquement depuis config.js) -->
@@ -178,6 +203,7 @@
   <script src="config.js"></script>
 
   <!-- 2. Modules core -->
+  <script src="core/assetManager.js"></script>
   <script src="core/keyRotation.js"></script>
   <script src="core/groqClient.js"></script>
   <script src="core/anthropicClient.js"></script>
@@ -187,6 +213,82 @@
 
   <!-- 3. Contrôleur UI (doit être en dernier) -->
   <script src="app.js"></script>
+
+  <!-- 4. Contrôleur panel assets (après app.js) -->
+  <script>
+  const AssetPanel = {
+    refresh() {
+      const grid  = document.getElementById("assetGrid");
+      const count = document.getElementById("assetCount");
+      const all   = GameAssets.getAll();
+      const names = Object.keys(all);
+      grid.innerHTML  = names.map(n => GameAssets.buildPreviewItem(n, all[n])).join("");
+      if (names.length > 0) {
+        count.style.display = "block";
+        count.textContent   = `✓ ${names.length} asset(s) chargé(s) — seront utilisés dans le jeu`;
+      } else {
+        count.style.display = "none";
+      }
+    },
+    setRole(name, role) {
+      if (GameAssets.assets[name]) GameAssets.assets[name].role = role;
+    },
+    remove(name) {
+      GameAssets.remove(name);
+      this.refresh();
+    },
+    async onFileSelect(e) {
+      await this._loadFiles(Array.from(e.target.files));
+      e.target.value = "";
+    },
+    async onDrop(e) {
+      e.preventDefault();
+      document.getElementById("assetDropZone").classList.remove("drag-over");
+      await this._loadFiles(Array.from(e.dataTransfer.files));
+    },
+    onDragOver(e)  { e.preventDefault(); document.getElementById("assetDropZone").classList.add("drag-over"); },
+    onDragLeave(e) { document.getElementById("assetDropZone").classList.remove("drag-over"); },
+    async _loadFiles(files) {
+      for (const f of files) {
+        try {
+          const { name, width, height } = await GameAssets.loadFile(f);
+          if (typeof UI !== "undefined") UI.log(`🖼️ Asset chargé : ${name} (${width}×${height}px)`, "key");
+        } catch(err) {
+          if (typeof UI !== "undefined") UI.log(`❌ ${err.message}`, "error");
+        }
+      }
+      this.refresh();
+      // Ouvrir la section si elle était fermée
+      const body = document.getElementById("assetsBody");
+      if (body.style.maxHeight === "0px" || body.style.maxHeight === "") {
+        UI.toggleSection("assetsBody", "assetsToggle");
+      }
+    },
+  };
+  </script>
+
+  <!-- ══ TAB BAR MOBILE (caché sur desktop via CSS) ═══════ -->
+  <nav class="mob-tab-bar" id="mobTabBar">
+    <button class="mob-tab active" id="mtab-generate" onclick="MobUI.switchTab('generate')">
+      <span class="tab-icon">📋</span>
+      Générer
+    </button>
+    <button class="mob-tab" id="mtab-game" onclick="MobUI.switchTab('game')">
+      <span class="tab-icon">🎮</span>
+      Jeu
+    </button>
+    <button class="mob-tab" id="mtab-keys" onclick="MobUI.switchTab('keys')">
+      <span class="tab-icon">🔑</span>
+      Clés
+    </button>
+    <button class="mob-tab" id="mtab-log" onclick="MobUI.switchTab('log')">
+      <span class="tab-icon">⚡</span>
+      Log
+    </button>
+  </nav>
+
+  <!-- ══ FAB GÉNÉRER MOBILE ══════════════════════════════ -->
+  <button class="mob-fab" id="mobFab" onclick="App.generate()">▶ GÉNÉRER</button>
 
 </body>
 </html>

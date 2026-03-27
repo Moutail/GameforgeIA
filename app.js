@@ -10,6 +10,7 @@ const AppState = {
   isGenerating:  false,
   currentHTML:   null,
   selectedGenre: null,
+  startTime:     0,
   pipeline:      null,  // Instance GameForgePipeline
 };
 
@@ -23,7 +24,7 @@ const UI = {
   log(msg, type = "info") {
     const body = document.getElementById("logBody");
     const now  = new Date();
-    const time = `${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
+    const time = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}:${String(now.getSeconds()).padStart(2,"0")}`;
     const el   = document.createElement("div");
     el.className = "log-entry";
     el.innerHTML = `<span class="log-time">${time}</span><span class="log-msg ${type}">${msg}</span>`;
@@ -85,6 +86,12 @@ const UI = {
     const btn = document.getElementById("btnGenerate");
     btn.disabled    = generating;
     btn.textContent = generating ? "⟳ GÉNÉRATION..." : "▶ GÉNÉRER LE JEU";
+    // Sync FAB mobile
+    const fab = document.getElementById("mobFab");
+    if (fab) {
+      fab.disabled    = generating;
+      fab.textContent = generating ? "⟳ GÉNÉRATION..." : "▶ GÉNÉRER";
+    }
   },
 
   // ── Clés Groq ─────────────────────────────────────────
@@ -196,9 +203,11 @@ const App = {
     // Reset UI
     AppState.isGenerating = true;
     AppState.currentHTML  = null;
+    AppState.startTime    = Date.now();
     UI.setGenerateBtn(true);
     UI.setActionsEnabled(false);
     UI.resetPipeline();
+    UI.clearLog();
     UI.showOverlay("GÉNÉRATION EN COURS", "Initialisation...", "⟳", true);
 
     // Interface UI pour le pipeline
@@ -212,12 +221,23 @@ const App = {
 
     const pipeline = new GameForgePipeline(gameClient, uiBridge);
 
+    // Assets utilisateur (sprites uploadés)
+    const assets = (typeof GameAssets !== "undefined" && GameAssets.hasAssets())
+      ? GameAssets.getAll()
+      : null;
+    if (assets) {
+      const count = Object.keys(assets).length;
+      UI.log(`🖼️ ${count} asset(s) seront injectés dans le prompt`, "key");
+    }
+
     // Lance le pipeline
-    const result = await pipeline.run({ description, genre, complexity, model, fixModels, criticModel });
+    const result = await pipeline.run({ description, genre, complexity, model, fixModels, criticModel, assets });
 
     // Résultat
     AppState.isGenerating = false;
     UI.setGenerateBtn(false);
+
+    const elapsed = ((Date.now() - AppState.startTime) / 1000).toFixed(1);
 
     if (result.success || result.html) {
       AppState.currentHTML = result.html;
@@ -227,13 +247,18 @@ const App = {
 
       if (result.success) {
         UI.hideOverlay();
+        UI.log(`⏱ Terminé en ${elapsed}s — Score: ${result.score ?? "?"}/14`, "success");
+        if (typeof MobUI !== "undefined") MobUI.onGameReady();
       } else {
         UI.showOverlay(
           "GÉNÉRATION PARTIELLE",
-          `Erreur après ${result.attempts} essais. Code dispo au téléchargement.`,
+          `${result.attempts} essai(s) — Meilleur score: ${result.score ?? 0}/14\nCode dispo au téléchargement.`,
           "⚠️"
         );
+        UI.log(`⏱ Terminé en ${elapsed}s (partiel) — Meilleur score: ${result.score ?? 0}/14`, "warn");
       }
+    } else {
+      UI.log(`❌ Génération échouée en ${elapsed}s`, "error");
     }
   },
 
@@ -263,6 +288,132 @@ const App = {
     const frame = document.getElementById("gameFrame");
     if (frame.requestFullscreen)       frame.requestFullscreen();
     else if (frame.webkitRequestFullscreen) frame.webkitRequestFullscreen();
+  },
+};
+
+// ══════════════════════════════════════════════════════════
+//  MOBUI — Contrôleur interface mobile
+// ══════════════════════════════════════════════════════════
+const MobUI = {
+  _current: "generate",
+
+  isMobile() {
+    return window.innerWidth <= 640;
+  },
+
+  // Sections correspondant à chaque onglet
+  _panels: {
+    generate: ["promptSection"],          // section prompt + genre
+    keys:     ["keysSection","claudeSection","assetsSection"],  // clés + assets
+    log:      ["logSection"],             // log panel
+    game:     null,                       // affiche le jeu (ferme la sidebar)
+  },
+
+  switchTab(tab) {
+    if (!this.isMobile()) return;
+    this._current = tab;
+
+    // Met à jour les onglets actifs
+    document.querySelectorAll(".mob-tab").forEach(t => t.classList.remove("active"));
+    const activeTab = document.getElementById(`mtab-${tab}`);
+    if (activeTab) activeTab.classList.add("active");
+
+    const sidebar  = document.querySelector(".sidebar");
+    const preview  = document.querySelector(".preview");
+    const fab      = document.getElementById("mobFab");
+
+    if (tab === "game") {
+      // Ferme la sidebar, affiche le jeu en plein écran
+      sidebar.classList.remove("mob-visible");
+      preview.classList.remove("mob-behind");
+      if (fab) fab.classList.add("hidden");
+    } else {
+      // Affiche la sidebar, estompe le jeu
+      sidebar.classList.add("mob-visible");
+      preview.classList.add("mob-behind");
+      if (fab) fab.classList.remove("hidden");
+
+      // Scroll la sidebar vers la bonne section
+      const targets = this._panels[tab];
+      if (targets) {
+        // Cache toutes les sections collapsibles, ré-ouvre celles du tab
+        this._showSections(targets);
+      }
+    }
+  },
+
+  _showSections(sectionIds) {
+    const allSections = {
+      keysSection:   { body: "keysBody",    toggle: "keysToggle" },
+      claudeSection: { body: "claudeKeysBody", toggle: "claudeKeysToggle" },
+      assetsSection: { body: "assetsBody",  toggle: "assetsToggle" },
+    };
+    // Ouvre les sections demandées, ferme les autres
+    Object.entries(allSections).forEach(([id, cfg]) => {
+      const body   = document.getElementById(cfg.body);
+      const toggle = document.getElementById(cfg.toggle);
+      if (!body) return;
+      const shouldOpen = sectionIds.includes(id);
+      body.style.maxHeight = shouldOpen ? "600px" : "0px";
+      if (toggle) toggle.classList.toggle("collapsed", !shouldOpen);
+    });
+    // Scroll au bon endroit
+    const sidebar = document.querySelector(".sidebar");
+    if (sidebar) sidebar.scrollTop = 0;
+  },
+
+  // Appelé quand un jeu est prêt — bascule automatiquement sur l'onglet Jeu
+  onGameReady() {
+    if (this.isMobile()) {
+      this.switchTab("game");
+    }
+  },
+
+  // Notification de log — badge sur l'onglet Log
+  notifyLog() {
+    const tab = document.getElementById("mtab-log");
+    if (tab && this._current !== "log" && this.isMobile()) {
+      tab.querySelector(".tab-icon").textContent = "⚡";
+    }
+  },
+
+  // Init au démarrage
+  init() {
+    if (!this.isMobile()) return;
+
+    // Ajouter bouton "✕ Fermer" en haut de la sidebar pour revenir au jeu
+    const sidebar = document.querySelector(".sidebar");
+    if (sidebar && !document.getElementById("mob-close-btn")) {
+      const closeBar = document.createElement("div");
+      closeBar.id = "mob-close-bar";
+      closeBar.style.cssText = [
+        "display:flex", "align-items:center", "justify-content:space-between",
+        "padding:10px 16px", "border-bottom:1px solid rgba(255,255,255,0.07)",
+        "flex-shrink:0", "background:var(--s2)"
+      ].join(";");
+      closeBar.innerHTML = [
+        "<span style='font-size:10px;font-family:monospace;color:var(--lime);letter-spacing:2px'>GAMEFORGE AI</span>",
+        "<button id='mob-close-btn' onclick='MobUI.switchTab(\"game\")' style='",
+        "background:none;border:1px solid rgba(255,255,255,0.2);border-radius:5px;",
+        "color:rgba(255,255,255,0.7);font-size:12px;font-family:monospace;",
+        "padding:4px 10px;cursor:pointer'>✕ Jeu</button>"
+      ].join("");
+      sidebar.insertBefore(closeBar, sidebar.firstChild);
+    }
+
+    // Démarrer sur l'onglet Générer (montrer le formulaire)
+    this.switchTab("generate");
+
+    // Recalculer si rotation téléphone
+    window.addEventListener("resize", () => {
+      if (!this.isMobile()) {
+        // Retour desktop : reset sidebar
+        const sb = document.querySelector(".sidebar");
+        const pv = document.querySelector(".preview");
+        if (sb) sb.classList.remove("mob-visible");
+        if (pv) pv.classList.remove("mob-behind");
+      }
+    });
   },
 };
 
@@ -338,6 +489,7 @@ function init() {
 
   UI.log(`${GAMEFORGE_CONFIG.APP_NAME} v${GAMEFORGE_CONFIG.VERSION} initialisé`, "success");
   UI.log("Ctrl+Entrée pour générer rapidement", "info");
+  if (typeof MobUI !== "undefined") MobUI.init();
 
   // Statut des clés au démarrage
   const configGroqKeys = GAMEFORGE_CONFIG.GROQ_API_KEYS.filter(k => k && !k.includes("INSERE"));
