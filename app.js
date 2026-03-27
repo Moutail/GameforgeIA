@@ -86,12 +86,7 @@ const UI = {
     const btn = document.getElementById("btnGenerate");
     btn.disabled    = generating;
     btn.textContent = generating ? "⟳ GÉNÉRATION..." : "▶ GÉNÉRER LE JEU";
-    // Sync FAB mobile
-    const fab = document.getElementById("mobFab");
-    if (fab) {
-      fab.disabled    = generating;
-      fab.textContent = generating ? "⟳ GÉNÉRATION..." : "▶ GÉNÉRER";
-    }
+    if (typeof MobUI !== "undefined") MobUI.setGenerating(generating);
   },
 
   // ── Clés Groq ─────────────────────────────────────────
@@ -292,128 +287,107 @@ const App = {
 };
 
 // ══════════════════════════════════════════════════════════
-//  MOBUI — Contrôleur interface mobile
+//  MOBUI — Contrôleur interface mobile (v2)
 // ══════════════════════════════════════════════════════════
 const MobUI = {
-  _current: "generate",
+  _mode: "prompt",   // "prompt" | "game"
+  _drawerOpen: false,
 
-  isMobile() {
-    return window.innerWidth <= 640;
-  },
+  isMobile() { return window.innerWidth <= 640; },
 
-  // Sections correspondant à chaque onglet
-  _panels: {
-    generate: ["promptSection"],          // section prompt + genre
-    keys:     ["keysSection","claudeSection","assetsSection"],  // clés + assets
-    log:      ["logSection"],             // log panel
-    game:     null,                       // affiche le jeu (ferme la sidebar)
-  },
-
-  switchTab(tab) {
-    if (!this.isMobile()) return;
-    this._current = tab;
-
-    // Met à jour les onglets actifs
-    document.querySelectorAll(".mob-tab").forEach(t => t.classList.remove("active"));
-    const activeTab = document.getElementById(`mtab-${tab}`);
-    if (activeTab) activeTab.classList.add("active");
-
-    const sidebar  = document.querySelector(".sidebar");
-    const preview  = document.querySelector(".preview");
-    const fab      = document.getElementById("mobFab");
-
-    if (tab === "game") {
-      // Ferme la sidebar, affiche le jeu en plein écran
-      sidebar.classList.remove("mob-visible");
-      preview.classList.remove("mob-behind");
-      if (fab) fab.classList.add("hidden");
-    } else {
-      // Affiche la sidebar, estompe le jeu
-      sidebar.classList.add("mob-visible");
-      preview.classList.add("mob-behind");
-      if (fab) fab.classList.remove("hidden");
-
-      // Scroll la sidebar vers la bonne section
-      const targets = this._panels[tab];
-      if (targets) {
-        // Cache toutes les sections collapsibles, ré-ouvre celles du tab
-        this._showSections(targets);
-      }
-    }
-  },
-
-  _showSections(sectionIds) {
-    const allSections = {
-      keysSection:   { body: "keysBody",    toggle: "keysToggle" },
-      claudeSection: { body: "claudeKeysBody", toggle: "claudeKeysToggle" },
-      assetsSection: { body: "assetsBody",  toggle: "assetsToggle" },
-    };
-    // Ouvre les sections demandées, ferme les autres
-    Object.entries(allSections).forEach(([id, cfg]) => {
-      const body   = document.getElementById(cfg.body);
-      const toggle = document.getElementById(cfg.toggle);
-      if (!body) return;
-      const shouldOpen = sectionIds.includes(id);
-      body.style.maxHeight = shouldOpen ? "600px" : "0px";
-      if (toggle) toggle.classList.toggle("collapsed", !shouldOpen);
-    });
-    // Scroll au bon endroit
-    const sidebar = document.querySelector(".sidebar");
-    if (sidebar) sidebar.scrollTop = 0;
-  },
-
-  // Appelé quand un jeu est prêt — bascule automatiquement sur l'onglet Jeu
-  onGameReady() {
-    if (this.isMobile()) {
-      this.switchTab("game");
-    }
-  },
-
-  // Notification de log — badge sur l'onglet Log
-  notifyLog() {
-    const tab = document.getElementById("mtab-log");
-    if (tab && this._current !== "log" && this.isMobile()) {
-      tab.querySelector(".tab-icon").textContent = "⚡";
-    }
-  },
-
-  // Init au démarrage
   init() {
     if (!this.isMobile()) return;
 
-    // Ajouter bouton "✕ Fermer" en haut de la sidebar pour revenir au jeu
-    const sidebar = document.querySelector(".sidebar");
-    if (sidebar && !document.getElementById("mob-close-btn")) {
-      const closeBar = document.createElement("div");
-      closeBar.id = "mob-close-bar";
-      closeBar.style.cssText = [
-        "display:flex", "align-items:center", "justify-content:space-between",
-        "padding:10px 16px", "border-bottom:1px solid rgba(255,255,255,0.07)",
-        "flex-shrink:0", "background:var(--s2)"
-      ].join(";");
-      closeBar.innerHTML = [
-        "<span style='font-size:10px;font-family:monospace;color:var(--lime);letter-spacing:2px'>GAMEFORGE AI</span>",
-        "<button id='mob-close-btn' onclick='MobUI.switchTab(\"game\")' style='",
-        "background:none;border:1px solid rgba(255,255,255,0.2);border-radius:5px;",
-        "color:rgba(255,255,255,0.7);font-size:12px;font-family:monospace;",
-        "padding:4px 10px;cursor:pointer'>✕ Jeu</button>"
-      ].join("");
-      sidebar.insertBefore(closeBar, sidebar.firstChild);
+    // Déplacer les sections paramètres dans le drawer (pas cloner — évite IDs dupliqués)
+    const drawerContent = document.getElementById("mobDrawerContent");
+    if (drawerContent) {
+      ["keysSection", "claudeSection", "assetsSection"].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) drawerContent.appendChild(el);   // move, not clone
+      });
+      // Ouvrir la section clés par défaut dans le drawer
+      const kb = document.getElementById("keysBody");
+      if (kb) kb.style.maxHeight = "500px";
+      const kt = document.getElementById("keysToggle");
+      if (kt) kt.classList.remove("collapsed");
     }
 
-    // Démarrer sur l'onglet Générer (montrer le formulaire)
-    this.switchTab("generate");
+    this.setMode("prompt");
 
-    // Recalculer si rotation téléphone
+    // Resize : si on passe desktop → reset
     window.addEventListener("resize", () => {
       if (!this.isMobile()) {
-        // Retour desktop : reset sidebar
         const sb = document.querySelector(".sidebar");
-        const pv = document.querySelector(".preview");
-        if (sb) sb.classList.remove("mob-visible");
-        if (pv) pv.classList.remove("mob-behind");
+        if (sb) { sb.classList.remove("mob-hidden"); sb.style.display = ""; }
       }
     });
+  },
+
+  // Mode "prompt" → montre formulaire + FAB Générer
+  // Mode "game"   → montre jeu plein écran + FAB Retour
+  setMode(mode) {
+    this._mode = mode;
+    const sidebar = document.querySelector(".sidebar");
+    const fab     = document.getElementById("mobFab");
+
+    if (mode === "game") {
+      // Glisse la sidebar hors écran — la preview (toujours rendue) devient visible
+      if (sidebar) sidebar.classList.add("mob-hidden");
+      if (fab) {
+        fab.textContent = "✏️  NOUVEAU JEU";
+        fab.classList.add("mob-fab-game");
+        fab.disabled = false;
+      }
+    } else {
+      // Ramène la sidebar
+      if (sidebar) sidebar.classList.remove("mob-hidden");
+      if (fab) {
+        fab.textContent = "▶  GÉNÉRER";
+        fab.classList.remove("mob-fab-game");
+        fab.disabled = false;
+      }
+    }
+  },
+
+  // Appelé par le FAB selon le mode
+  fabAction() {
+    if (this._mode === "game") {
+      this.setMode("prompt");
+    } else {
+      App.generate();
+    }
+  },
+
+  // Drawer paramètres
+  openSettings() {
+    if (!this.isMobile()) return;
+    this._drawerOpen = true;
+    document.getElementById("mobDrawer").classList.add("open");
+  },
+
+  closeSettings() {
+    this._drawerOpen = false;
+    document.getElementById("mobDrawer").classList.remove("open");
+  },
+
+  // Appelé quand un jeu est prêt
+  onGameReady() {
+    if (this.isMobile()) this.setMode("game");
+  },
+
+  // Sync du FAB pendant la génération
+  setGenerating(on) {
+    if (!this.isMobile()) return;
+    const fab = document.getElementById("mobFab");
+    if (!fab) return;
+    if (on) {
+      // Pendant la génération : retour au prompt, FAB désactivé
+      this.setMode("prompt");
+      fab.disabled    = true;
+      fab.textContent = "⟳  GÉNÉRATION...";
+    } else {
+      fab.disabled = false;
+    }
   },
 };
 

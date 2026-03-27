@@ -222,28 +222,31 @@ class GameForgePipeline {
       const jsonMatch = raw.match(/\{[^{}]*"total"\s*:\s*\d+[^{}]*\}/);
       if (!jsonMatch) {
         log("⚠️ CRITIC : réponse non-JSON → régénération demandée", "warn");
-        return { pass: false, total: 0, issues: ["Réponse CRITIC invalide — nouvelle tentative"], mechanics: null, visuals: null, bugs: null, controls: null, description_match: null };
+        return { pass: false, total: 0, issues: ["Réponse CRITIC invalide — nouvelle tentative"], mechanics: null, visuals: null, bugs: null, controls: null, description_match: null, feel: null };
       }
 
       const parsed            = JSON.parse(jsonMatch[0]);
       const total             = typeof parsed.total === "number" ? parsed.total : 0;
       const threshold         = this.config.QUALITY_THRESHOLD || 8;
       const controls          = typeof parsed.controls         === "number" ? parsed.controls         : 0;
-      const pass              = typeof parsed.pass === "boolean"
-        ? parsed.pass
-        : (total >= threshold && controls >= 1);
+      // pass sera recalculé après extraction de feel
       const issues            = Array.isArray(parsed.issues) ? parsed.issues : [];
       const mechanics         = typeof parsed.mechanics        === "number" ? parsed.mechanics        : null;
       const visuals           = typeof parsed.visuals          === "number" ? parsed.visuals          : null;
       const bugs              = typeof parsed.bugs             === "number" ? parsed.bugs             : null;
       const description_match = typeof parsed.description_match === "number" ? parsed.description_match : null;
+      const feel              = typeof parsed.feel             === "number" ? parsed.feel             : null;
 
-      return { pass, total, issues, mechanics, visuals, bugs, controls, description_match };
+      // pass explicite du modèle OU recalculé avec feel
+      const passCalc = total >= threshold && controls >= 1 && (feel === null || feel >= 1);
+      const passFinal = typeof parsed.pass === "boolean" ? parsed.pass : passCalc;
+
+      return { pass: passFinal, total, issues, mechanics, visuals, bugs, controls, description_match, feel };
 
     } catch (err) {
       // CRITIC indisponible : on retourne un score neutre bas pour forcer re-check
       log(`⚠️ CRITIC indisponible (${err.message.substring(0, 60)}) → score conservateur`, "warn");
-      return { pass: false, total: 0, issues: ["CRITIC indisponible — qualité non vérifiée"], mechanics: null, visuals: null, bugs: null, controls: null, description_match: null };
+      return { pass: false, total: 0, issues: ["CRITIC indisponible — qualité non vérifiée"], mechanics: null, visuals: null, bugs: null, controls: null, description_match: null, feel: null };
     }
   }
 

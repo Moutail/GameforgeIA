@@ -40,6 +40,8 @@
       <div class="status-dot" id="statusDot"></div>
       <div class="status-text" id="statusText">PRÊT</div>
     </div>
+    <!-- Bouton paramètres visible seulement sur mobile -->
+    <button class="mob-settings-btn" onclick="MobUI.openSettings()">⚙️ Params</button>
   </header>
 
   <!-- ══ PIPELINE BAR ════════════════════════════════════ -->
@@ -267,28 +269,18 @@
   };
   </script>
 
-  <!-- ══ TAB BAR MOBILE (caché sur desktop via CSS) ═══════ -->
-  <nav class="mob-tab-bar" id="mobTabBar">
-    <button class="mob-tab active" id="mtab-generate" onclick="MobUI.switchTab('generate')">
-      <span class="tab-icon">📋</span>
-      Générer
-    </button>
-    <button class="mob-tab" id="mtab-game" onclick="MobUI.switchTab('game')">
-      <span class="tab-icon">🎮</span>
-      Jeu
-    </button>
-    <button class="mob-tab" id="mtab-keys" onclick="MobUI.switchTab('keys')">
-      <span class="tab-icon">🔑</span>
-      Clés
-    </button>
-    <button class="mob-tab" id="mtab-log" onclick="MobUI.switchTab('log')">
-      <span class="tab-icon">⚡</span>
-      Log
-    </button>
-  </nav>
+  <!-- ══ DRAWER PARAMÈTRES MOBILE ════════════════════════════ -->
+  <div class="mob-drawer" id="mobDrawer">
+    <div class="mob-drawer-header">
+      <span class="mob-drawer-title">⚙️ PARAMÈTRES</span>
+      <button class="mob-drawer-close" onclick="MobUI.closeSettings()">&#10005; Fermer</button>
+    </div>
+    <!-- Les sections cloned ici par JS au init -->
+    <div id="mobDrawerContent"></div>
+  </div>
 
-  <!-- ══ FAB GÉNÉRER MOBILE ══════════════════════════════ -->
-  <button class="mob-fab" id="mobFab" onclick="App.generate()">▶ GÉNÉRER</button>
+  <!-- ══ FAB BARRE BASSE MOBILE ════════════════════════════ -->
+  <button class="mob-fab" id="mobFab" onclick="MobUI.fabAction()">▶ GÉNÉRER</button>
 
 </body>
 </html>

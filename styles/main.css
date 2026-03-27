@@ -33,7 +33,7 @@
 html, body { height:100%; overflow:hidden; background:var(--bg); color:var(--white); font-family:var(--sans); }
 
 /* ── LAYOUT ─────────────────────────────────────────────── */
-.app-header   { height:var(--header-h); display:flex; align-items:center; justify-content:space-between; padding:0 20px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+.app-header   { height:var(--header-h); display:flex; align-items:center; justify-content:space-between; gap:8px; padding:0 14px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
 .app-pipeline { height:var(--pipe-h);   display:flex; align-items:center; padding:0 20px; background:var(--surface); border-bottom:1px solid var(--border); gap:0; overflow-x:auto; flex-shrink:0; }
 .app-body     { display:flex; height:calc(100vh - var(--header-h) - var(--pipe-h)); overflow:hidden; }
 .sidebar      { width:var(--sidebar-w); flex-shrink:0; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; overflow:hidden; }
@@ -190,134 +190,159 @@ iframe#gameFrame { width:100%; height:100%; border:none; background:#000; displa
   .pipe-step { padding:3px 6px; font-size:9px; }
 }
 
+/* ── Éléments mobiles : cachés sur desktop (DOIT être avant la media query) ── */
+@media (min-width: 641px) {
+  .mob-fab,
+  .mob-drawer,
+  .mob-settings-btn { display: none !important; }
+}
+
 /* ── RESPONSIVE MOBILE (≤ 640px) ────────────────────── */
 @media (max-width: 640px) {
-  :root {
-    --mob-tab-h: 56px;
-    --sidebar-w: 100%;
-  }
+  :root { --mob-fab-h: 60px; --sidebar-w: 100%; }
 
-  /* Masque la pipeline bar sur mobile (trop étroite) */
   .app-pipeline { display: none; }
+  .app-body { flex-direction: column; height: calc(100vh - var(--header-h)); overflow: hidden; }
 
-  /* Stack vertical : header + body */
-  .app-body {
-    flex-direction: column;
-    height: calc(100vh - var(--header-h));
-    overflow: hidden;
-  }
-
-  /* ── Sidebar → panels empilés cachés par défaut ── */
-  .sidebar {
-    position: fixed;
-    inset: var(--header-h) 0 var(--mob-tab-h) 0;
-    width: 100%;
-    height: auto;
-    border: none;
-    overflow-y: auto;
-    z-index: 100;
-    display: none;        /* JS contrôle la visibilité */
-    background: var(--surface);
-  }
-  .sidebar.mob-visible { display: flex; }
-
-  /* ── Preview → prend tout l'espace restant ── */
+  /* ── PREVIEW : toujours visible, plein écran (iframe garde ses dimensions) ── */
   .preview {
     position: fixed;
-    inset: var(--header-h) 0 var(--mob-tab-h) 0;
-    z-index: 50;
+    inset: var(--header-h) 0 var(--mob-fab-h) 0;
+    display: flex;
+    z-index: 10;
   }
-  .preview-header { padding: 6px 12px; }
-  .preview-title  { font-size: 10px; }
-  .preview-actions .btn-action { padding: 4px 8px; font-size: 10px; }
+  .preview-header { padding: 6px 10px; }
+  .preview-title  { font-size: 10px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .preview-actions .btn-action { padding: 4px 7px; font-size: 10px; }
 
-  /* Quand un panel mobile est ouvert, on réduit la preview */
-  .preview.mob-behind {
-    z-index: 40;
-    opacity: 0.3;
+  /* ── SIDEBAR : overlay par-dessus la preview ── */
+  .sidebar {
+    position: fixed;
+    inset: var(--header-h) 0 var(--mob-fab-h) 0;
+    width: 100%;
+    border: none;
+    overflow-y: auto;
+    z-index: 200;
+    flex-direction: column;
+    display: flex;
+    transition: transform 0.22s ease;
+    transform: translateX(0);
+  }
+  /* Quand jeu visible : sidebar glisse hors écran vers la gauche */
+  .sidebar.mob-hidden {
+    transform: translateX(-100%);
     pointer-events: none;
   }
 
-  /* ── Prompt area ── */
-  .prompt-wrap {
-    padding: 12px 14px;
-    min-height: 0;
-  }
-  textarea.prompt { min-height: 100px; font-size: 14px; }
-  .btn-generate   { padding: 14px; font-size: 15px; margin-top: 12px; }
+  /* Sections clés/claude/assets cachées dans la sidebar (déplacées dans le drawer) */
+  .sidebar > .section { display: none; }
 
-  /* ── Sections collapsibles ── */
-  .section { padding: 10px 14px; }
-
-  /* ── Log panel ── */
-  .log-panel { height: auto; flex: 1; }
-
-  /* ── TAB BAR MOBILE ── */
-  .mob-tab-bar {
-    display: flex;
-    position: fixed;
-    bottom: 0; left: 0; right: 0;
-    height: var(--mob-tab-h);
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    z-index: 200;
-  }
-  .mob-tab {
+  /* Prompt-wrap occupe tout l'espace */
+  .sidebar > .prompt-wrap {
     flex: 1;
+    padding: 16px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    cursor: pointer;
-    color: var(--dim);
-    font-size: 9px;
-    font-family: var(--mono);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
-    border: none;
-    background: none;
-    transition: color 0.15s, background 0.15s;
-    -webkit-tap-highlight-color: transparent;
-    min-height: 44px;
+    overflow-y: auto;
   }
-  .mob-tab .tab-icon { font-size: 20px; line-height: 1; }
-  .mob-tab.active    { color: var(--lime); background: var(--lime-dim); }
-  .mob-tab:active    { background: rgba(184,244,41,0.08); }
 
-  /* ── Bouton générer flottant ── */
+  /* Log panel caché par défaut */
+  .log-panel { display: none; }
+
+  /* Textarea grande sur mobile */
+  textarea.prompt { flex: 1; min-height: 130px; font-size: 15px; line-height: 1.7; }
+  .options-row { margin-top: 10px; gap: 8px; }
+  select.select-input { font-size: 13px; padding: 8px; }
+
+  /* Bouton générer dans la sidebar */
+  .prompt-wrap .btn-generate {
+    display: block;
+    padding: 16px;
+    font-size: 16px;
+    margin-top: 12px;
+    border-radius: 10px;
+  }
+
+  /* ── FAB BARRE BASSE ── */
   .mob-fab {
-    display: flex;
+    display: flex !important;
     position: fixed;
-    bottom: calc(var(--mob-tab-h) + 14px);
-    left: 50%;
-    transform: translateX(-50%);
+    bottom: 0; left: 0; right: 0;
+    height: var(--mob-fab-h);
     background: var(--lime);
     color: #060c00;
     border: none;
-    border-radius: 28px;
-    padding: 14px 32px;
-    font-size: 14px;
+    border-top: 2px solid rgba(0,0,0,0.15);
+    font-size: 16px;
     font-family: var(--mono);
     font-weight: bold;
-    letter-spacing: 1px;
+    letter-spacing: 2px;
     cursor: pointer;
-    z-index: 300;
-    box-shadow: 0 4px 20px rgba(184,244,41,0.35);
-    transition: all 0.2s;
-    white-space: nowrap;
+    z-index: 400;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: background 0.15s;
   }
-  .mob-fab:active    { transform: translateX(-50%) scale(0.96); }
-  .mob-fab:disabled  { background: var(--dim); color: rgba(255,255,255,0.3); box-shadow: none; cursor: not-allowed; }
-  .mob-fab.hidden    { display: none; }
+  .mob-fab:active   { background: #cbf74d; }
+  .mob-fab:disabled { background: var(--dim); color: rgba(255,255,255,0.3); cursor: not-allowed; }
+  .mob-fab.mob-fab-game {
+    background: var(--s3);
+    color: var(--white);
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    letter-spacing: 1px;
+  }
 
-  /* Masque le bouton générer dans la sidebar sur mobile (remplacé par FAB) */
-  .prompt-wrap .btn-generate { display: none; }
+  /* ── DRAWER PARAMÈTRES ── */
+  .mob-drawer {
+    display: flex !important;
+    flex-direction: column;
+    position: fixed;
+    inset: var(--header-h) 0 0 0;
+    background: var(--surface);
+    z-index: 600;
+    overflow-y: auto;
+    transform: translateX(105%);
+    transition: transform 0.25s ease;
+  }
+  .mob-drawer.open { transform: translateX(0); }
+  .mob-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 1;
+    flex-shrink: 0;
+  }
+  .mob-drawer-title { font-size: 11px; font-family: var(--mono); letter-spacing: 2px; color: var(--lime); text-transform: uppercase; }
+  .mob-drawer-close {
+    background: var(--lime); border: none; border-radius: 6px;
+    color: #060c00; font-size: 13px; font-family: var(--mono);
+    font-weight: bold; padding: 7px 18px; cursor: pointer;
+  }
+  .mob-drawer .section { display: flex !important; }
+  #mobDrawerContent { flex: 1; overflow-y: auto; }
 
-  /* Masque le header de log sur mobile (intégré dans l'onglet) */
-  .log-panel .log-header .btn-clear { font-size: 11px; padding: 4px 8px; }
+  /* ── BOUTON ⚙ DANS LE HEADER ── */
+  .mob-settings-btn {
+    display: flex !important;
+    align-items: center;
+    gap: 4px;
+    background: var(--lime);
+    border: none;
+    border-radius: 5px;
+    color: #060c00;
+    font-size: 11px;
+    font-family: var(--mono);
+    font-weight: bold;
+    padding: 5px 10px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 }
-
-/* ── Masque les éléments mobile sur desktop ── */
-.mob-tab-bar,
-.mob-fab { display: none; }

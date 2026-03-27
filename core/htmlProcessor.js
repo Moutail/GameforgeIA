@@ -151,21 +151,21 @@ const HTMLProcessor = {
       );
     }
 
-    // ▸ Auto-fix physique hors-plage (vitesses fixes trop élevées)
-    //   Speed fixe > 12 → remplace par canvas-proportionnel
+    // ▸ Auto-fix physique hors-plage (valeurs fixes sûres — pas de référence canvas)
+    //   Speed fixe > 12 → 5 (valeur sûre, pas de ReferenceError possible)
     fixed = fixed.replace(
       /\b(speed|playerSpeed)\s*=\s*(1[3-9]|[2-9]\d+)(\s*[;,])/g,
-      (_, name, val, end) => `${name} = canvas.width * 0.004 /* [GameForge] speed ${val} → proportionnel */${end}`
+      (_, name, val, end) => `${name} = 5 /* [GameForge] speed ${val} → 5 */${end}`
     );
-    //   Gravity > 1.2 → réduit
+    //   Gravity > 1.2 → 0.4
     fixed = fixed.replace(
       /\bgravity\s*=\s*(1\.[3-9]\d*|[2-9][\d.]*)\s*([;,])/g,
-      (_, val, end) => `gravity = canvas.height * 0.0007 /* [GameForge] gravity ${val} → réduite */${end}`
+      (_, val, end) => `gravity = 0.4 /* [GameForge] gravity ${val} → 0.4 */${end}`
     );
-    //   jumpForce < -22 (négatif trop élevé) → réduit
+    //   jumpForce < -22 → -12
     fixed = fixed.replace(
       /\bjump(?:Force|Speed|Power|Velocity)\s*=\s*(-(?:2[3-9]|[3-9]\d+)[\d.]*)\s*([;,])/gi,
-      (_, val, end) => `jumpForce = -(canvas.height * 0.018) /* [GameForge] jump ${val} → réduit */${end}`
+      (_, val, end) => `jumpForce = -12 /* [GameForge] jump ${val} → -12 */${end}`
     );
 
     // ▸ Injecte un gestionnaire de touches minimal si aucun n'est présent
