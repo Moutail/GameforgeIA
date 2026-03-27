@@ -12,10 +12,10 @@ const GAMEFORGE_CONFIG = {
   // │  Remplace les chaînes "INSERE_TA_CLE_ICI_X"         │
   // └─────────────────────────────────────────────────────┘
   GROQ_API_KEYS: [
-    "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",   // ← Clé principale   (gsk_xxxx...)
-    "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",   // ← Fallback 1       (gsk_xxxx...)
-    "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",   // ← Fallback 2       (gsk_xxxx...)
-    "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",   // ← Réserve          (gsk_xxxx...)
+    "",   // ← Clé principale   (gsk_xxxx...)
+    "",   // ← Fallback 1       (gsk_xxxx...)
+    "",   // ← Fallback 2       (gsk_xxxx...)
+    "",   // ← Réserve          (gsk_xxxx...)
   ],
 
   // ┌─────────────────────────────────────────────────────┐
