@@ -1,6 +1,6 @@
 # 🎮 GameForge AI — v2.0
 
-> **Créé par [CHAOUSSI Cherif](https://github.com/CHAOUSSI-Cherif) — Copyright © 2025 — Licence MIT avec attribution obligatoire**
+> **Créé par [CHAOUSSI Cherif](https://github.com/CHAOUSSI-Cherif) — Copyright © 2026 — Licence MIT avec attribution obligatoire**
 
 **Générateur de jeux vidéo HTML5/Canvas propulsé par Groq & Claude — 100% gratuit, 0 serveur requis**
 
@@ -303,7 +303,7 @@ Puis ajouter les mécaniques dans `prompts/prompts.js` → `genreMechanics`.
 ## 📄 Licence & Auteur
 
 **Auteur original : CHAOUSSI Cherif**  
-Conception, architecture et développement — 2025
+Conception, architecture et développement — 2026
 
 Ce projet est distribué sous licence **MIT avec obligation d’attribution**.
 
