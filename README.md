@@ -1,5 +1,7 @@
 # 🎮 GameForge AI — v2.0
 
+> **Créé par [CHAOUSSI Cherif](https://github.com/CHAOUSSI-Cherif) — Copyright © 2025 — Licence MIT avec attribution obligatoire**
+
 **Générateur de jeux vidéo HTML5/Canvas propulsé par Groq & Claude — 100% gratuit, 0 serveur requis**
 
 > Décris un jeu en texte → GameForge AI génère un fichier HTML5 jouable dans le navigateur, avec pipeline de qualité automatique : génération → validation → sandbox → critique → correction → régénération.
@@ -298,6 +300,21 @@ Puis ajouter les mécaniques dans `prompts/prompts.js` → `genreMechanics`.
 
 ---
 
-## 📄 Licence
+## 📄 Licence & Auteur
 
-MIT — Utilise, modifie, redistribue librement.
+**Auteur original : CHAOUSSI Cherif**  
+Conception, architecture et développement — 2025
+
+Ce projet est distribué sous licence **MIT avec obligation d’attribution**.
+
+| Tu peux | Tu ne peux pas |
+|---|---|
+| ✅ Télécharger et utiliser librement | ❌ Supprimer la mention d’auteur |
+| ✅ Modifier et adapter le code | ❌ Prétendre être le créateur original |
+| ✅ Redistribuer ou forker | ❌ Publier sans créditer CHAOUSSI Cherif |
+| ✅ Utiliser dans un projet personnel ou commercial | ❌ Retirer le fichier LICENSE |
+
+> Toute distribution publique, fork ou dérivé doit mentionner :  
+> *« Based on GameForge AI by CHAOUSSI Cherif »*
+
+Voir le fichier [`LICENSE`](./LICENSE) pour le texte complet.
