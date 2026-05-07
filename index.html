@@ -34,7 +34,7 @@
   <meta name="copyright" content="Copyright (c) 2026 CHAOUSSI Cherif — Licence MIT avec attribution">
   <meta name="description" content="GameForge AI — Générateur de jeux HTML5 par IA. Conçu par CHAOUSSI Cherif.">
   <title>GameForge AI — Générateur de Jeux JavaScript</title>
-  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/main.css?v=5">
 </head>
 <body>
 
@@ -116,13 +116,31 @@
             <input class="key-input" id="anthropicKey" type="password" placeholder="sk-ant-api03-..." oninput="UI.validateAnthropicKey()" style="width:100%">
           </div>
           <div style="font-size:10px;color:var(--dim);font-family:var(--mono);line-height:1.5;margin-top:4px">
-            Génération 3× plus qualitative.<br>
+            Génération haute qualité (Sonnet/Opus).<br>
             Obtiens ta clé : console.anthropic.com
           </div>
         </div>
       </div>
 
-      <!-- 🖼️ Assets utilisateur -->
+      <!-- � Clé API OpenAI -->
+      <div class="section" id="openaiSection">
+        <div class="section-header" onclick="UI.toggleSection('openaiKeysBody','openaiKeysToggle')">
+          <span class="section-title">🟢 Clé API OpenAI (GPT-4o, o1)</span>
+          <span class="section-toggle collapsed" id="openaiKeysToggle">▼</span>
+        </div>
+        <div class="section-body" id="openaiKeysBody" style="max-height:0px">
+          <div class="key-block" style="margin-bottom:6px">
+            <div class="key-label"><div class="key-dot" id="kdOpenAI"></div>Clé OpenAI — sk-...</div>
+            <input class="key-input" id="openaiKey" type="password" placeholder="sk-proj-..." oninput="UI.validateOpenAIKey()" style="width:100%">
+          </div>
+          <div style="font-size:10px;color:var(--dim);font-family:var(--mono);line-height:1.5;margin-top:4px">
+            Pour utiliser GPT-4o ou o1-mini.<br>
+            Obtiens ta clé : platform.openai.com
+          </div>
+        </div>
+      </div>
+
+      <!-- �️ Assets utilisateur -->
       <div class="section" id="assetsSection">
         <div class="section-header" onclick="UI.toggleSection('assetsBody','assetsToggle')">
           <span class="section-title">🖼️ Assets (Sprites / Fonds)</span>
@@ -147,6 +165,17 @@
         </div>
       </div>
 
+      <!-- ⭐ Galerie (jeux sauvegardés) -->
+      <div class="section" id="gallerySection">
+        <div class="section-header" onclick="UI.toggleSection('galleryBody','galleryToggle')">
+          <span class="section-title">⭐ Galerie (<span id="galleryCount">0</span>)</span>
+          <span class="section-toggle collapsed" id="galleryToggle">▼</span>
+        </div>
+        <div class="section-body" id="galleryBody" style="max-height:0px">
+          <div id="galleryList" class="gallery-list"></div>
+        </div>
+      </div>
+
       <!-- 📋 Prompt + Options -->
       <div class="prompt-wrap" id="promptSection">
         <div class="section-title" style="margin-bottom:10px">📋 Description du jeu</div>
@@ -158,14 +187,19 @@
           placeholder="Ex: Un jeu de plateforme inspiré de Rayman — personnage sans corps qui vole avec ses oreilles-hélice et propulse ses poings pour attaquer. 3 niveaux, boss final, ennemis variés."></textarea>
 
         <div class="options-row">
+          <select class="select-input" id="modeSelect" title="Mode SPEC = très fiable, multi-niveaux | Mode RAW = plus créatif, plus de risques">
+            <option value="spec" selected>🧩 Spec (fiable, multi-niveaux)</option>
+            <option value="raw">📝 Raw (créatif, expert)</option>
+          </select>
           <select class="select-input" id="complexitySelect">
             <option value="simple">Simple (rapide)</option>
             <option value="medium" selected>Medium (équilibré)</option>
             <option value="complex">Complexe (complet)</option>
           </select>
-          <select class="select-input" id="modelSelect">
-            <!-- Options générées dynamiquement depuis config.js -->
+          <select class="select-input" id="modelSelect" style="flex:2">
+            <!-- Options générées dynamiquement -->
           </select>
+          <button class="btn-action" id="btnAddCustomModel" onclick="App.openCustomModelDialog()" title="Ajouter un modèle custom (ex: Llama 405B, modèle local…)" style="flex:0 0 auto;font-size:14px;padding:8px 11px">+</button>
         </div>
 
         <button class="btn-generate" id="btnGenerate" onclick="App.generate()">
@@ -184,12 +218,17 @@
     </aside>
     <!-- ╚══════════════════════════════════════════════╝ -->
 
+    <!-- ║ Splitter resizable ║ -->
+    <div class="sidebar-resizer" id="sidebarResizer" title="Glisse pour redimensionner"></div>
+
     <!-- ╔═ PREVIEW ══════════════════════════════════════╗ -->
     <div class="preview">
       <div class="preview-header">
         <span class="preview-title" id="previewTitle">🎮 APERÇU DU JEU</span>
         <div class="preview-actions">
           <button class="btn-action" id="btnReload"     onclick="App.reload()"      disabled>↺ Recharger</button>
+          <button class="btn-action" id="btnSave"       onclick="App.saveToGallery()" disabled>⭐ Sauver</button>
+          <button class="btn-action" id="btnEditSpec"   onclick="SpecEditor.open()" disabled>✎ Éditer</button>
           <button class="btn-action primary" id="btnDownload" onclick="App.download()"   disabled>⬇ Télécharger</button>
           <button class="btn-action" id="btnFullscreen" onclick="App.fullscreen()"  disabled>⛶ Plein écran</button>
         </div>
@@ -209,21 +248,111 @@
 
   </div>
 
+  <!-- ══ MODAL ONBOARDING (1re visite uniquement) ════════════ -->
+  <div class="onboard-modal" id="onboardModal" role="dialog" aria-modal="true" aria-labelledby="onboardTitle">
+    <div class="onboard-box">
+      <div class="onboard-head">
+        <div class="onboard-emoji">🎮</div>
+        <h2 id="onboardTitle">Bienvenue dans GameForge AI</h2>
+        <p>Génère des jeux HTML5 avec une IA. Aucun compte, aucune installation. Il te faut juste <b>une clé API gratuite</b> pour commencer.</p>
+      </div>
+
+      <div class="onboard-body">
+        <div class="onboard-tier onboard-tier-free">
+          <div class="onboard-tier-head">
+            <span class="onboard-tier-tag">100% GRATUIT</span>
+            <span class="onboard-tier-name">Groq · Llama 3.3 70B</span>
+          </div>
+          <ol>
+            <li>Va sur <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a></li>
+            <li>Crée un compte (Google ou GitHub, 30 sec)</li>
+            <li>Clique <b>Create API Key</b></li>
+            <li>Colle la clé ci-dessous (commence par <code>gsk_</code>)</li>
+          </ol>
+          <input class="onboard-input" id="onboardGroqKey" type="password" placeholder="gsk_..." autocomplete="off">
+        </div>
+
+        <details class="onboard-tier onboard-tier-pro">
+          <summary>
+            <span class="onboard-tier-tag onboard-tier-tag-pro">PRO (optionnel)</span>
+            <span class="onboard-tier-name">Claude Sonnet/Opus · GPT-4o</span>
+          </summary>
+          <div style="padding:10px 4px 4px;">
+            <p style="font-size:12px;color:var(--dim);margin-bottom:8px">Qualité supérieure pour des jeux complexes (200k+ tokens contexte). Tu peux toujours en ajouter plus tard depuis la sidebar.</p>
+            <input class="onboard-input" id="onboardClaudeKey" type="password" placeholder="Clé Claude (sk-ant-…)" autocomplete="off" style="margin-bottom:6px">
+            <input class="onboard-input" id="onboardOpenAIKey" type="password" placeholder="Clé OpenAI (sk-…)" autocomplete="off">
+          </div>
+        </details>
+      </div>
+
+      <div class="onboard-actions">
+        <button class="onboard-skip"  onclick="App.skipOnboarding()">Plus tard</button>
+        <button class="onboard-start" onclick="App.completeOnboarding()">▶ Commencer</button>
+      </div>
+
+      <div class="onboard-foot">
+        🔒 Tes clés sont stockées <b>uniquement</b> dans ton navigateur (localStorage). Aucun serveur tiers.
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MODAL MODÈLE CUSTOM ══════════════════════════════════ -->
+  <div class="onboard-modal" id="customModelModal" role="dialog" aria-modal="true">
+    <div class="onboard-box" style="max-width:500px">
+      <div class="onboard-head">
+        <div class="onboard-emoji">🤖</div>
+        <h2>Ajouter un modèle</h2>
+        <p>Utilise n'importe quel modèle Groq, Claude ou OpenAI compatible API ChatCompletions.</p>
+      </div>
+      <div class="onboard-body">
+        <label class="onboard-label">ID du modèle (exact)</label>
+        <input class="onboard-input" id="customModelId" placeholder="ex: llama-3.1-405b-reasoning">
+        <label class="onboard-label">Nom affiché</label>
+        <input class="onboard-input" id="customModelLabel" placeholder="ex: Llama 405B (réflexion)">
+        <label class="onboard-label">Provider</label>
+        <select class="onboard-input" id="customModelProvider">
+          <option value="groq">Groq (clé gsk_…)</option>
+          <option value="claude">Claude (clé sk-ant-…)</option>
+          <option value="openai">OpenAI (clé sk-…)</option>
+        </select>
+        <label class="onboard-label">Tokens max en sortie (4000 par défaut)</label>
+        <input class="onboard-input" id="customModelOut" type="number" placeholder="4000" min="500" max="32000">
+      </div>
+      <div class="onboard-actions">
+        <button class="onboard-skip"  onclick="App.closeCustomModelDialog()">Annuler</button>
+        <button class="onboard-start" onclick="App.saveCustomModel()">Ajouter</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══ SCRIPTS — ordre important ══════════════════════════ -->
   <!-- 1. Config (clés, paramètres) -->
-  <script src="config.js"></script>
+  <script src="config.js?v=4"></script>
 
   <!-- 2. Modules core -->
-  <script src="core/assetManager.js"></script>
-  <script src="core/keyRotation.js"></script>
-  <script src="core/groqClient.js"></script>
-  <script src="core/anthropicClient.js"></script>
-  <script src="core/htmlProcessor.js"></script>
-  <script src="prompts/prompts.js"></script>
-  <script src="core/pipeline.js"></script>
+  <!-- 2a. Préférences utilisateur (clés en localStorage) — DOIT être avant les clients -->
+  <script src="core/userPrefs.js?v=5"></script>
+  <script src="core/modelRegistry.js?v=5"></script>
+  <script src="core/assetManager.js?v=4"></script>
+  <script src="core/keyRotation.js?v=4"></script>
+  <script src="core/groqClient.js?v=5"></script>
+  <script src="core/anthropicClient.js?v=4"></script>
+  <script src="core/openaiClient.js?v=5"></script>
+  <script src="core/htmlProcessor.js?v=4"></script>
+  <script src="prompts/prompts.js?v=4"></script>
+  <script src="core/pipeline.js?v=4"></script>
+
+  <!-- 2b. Mode SPEC v3 — moteur + compilateur + prompts JSON -->
+  <script src="prompts/specPrompt.js?v=4"></script>
+  <script src="core/specCompiler.js?v=4"></script>
+  <script src="core/specPipeline.js?v=4"></script>
+
+  <!-- 2c. Galerie + Éditeur live -->
+  <script src="core/gallery.js?v=4"></script>
+  <script src="core/specEditor.js?v=4"></script>
 
   <!-- 3. Contrôleur UI (doit être en dernier) -->
-  <script src="app.js"></script>
+  <script src="app.js?v=5"></script>
 
   <!-- 4. Contrôleur panel assets (après app.js) -->
   <script>

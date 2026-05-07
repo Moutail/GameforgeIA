@@ -22,10 +22,14 @@ class GroqClient {
    * @param {Function} onStatus  - Callback de progression (optionnel)
    * @returns {Promise<string>}  - Texte de la réponse
    */
-  async chat(messages, model, onStatus = null) {
+  async chat(messages, model, onStatus = null, opts = {}) {
     const maxAttempts = Math.max(6, this.pipeline.MAX_FIX_ATTEMPTS * this.rotation.keys.length);
     const baseDelay   = this.pipeline.RETRY_DELAY_MS  || 800;
     const maxDelay    = this.pipeline.MAX_RETRY_DELAY_MS || 8000;
+    // Tokens max par réponse — priorité : opts > registry par modèle > config
+    const registryLimit = window.ModelRegistry ? window.ModelRegistry.maxOutputFor(model) : null;
+    const maxTokens   = opts.maxTokens || registryLimit || this.pipeline.MAX_TOKENS;
+    const temperature = opts.temperature ?? this.pipeline.TEMPERATURE;
     let attempt = 0;
 
     while (attempt < maxAttempts) {
@@ -56,8 +60,8 @@ class GroqClient {
           body: JSON.stringify({
             model:       model,
             messages:    messages,
-            max_tokens:  this.pipeline.MAX_TOKENS,
-            temperature: this.pipeline.TEMPERATURE,
+            max_tokens:  maxTokens,
+            temperature: temperature,
           }),
         });
 
